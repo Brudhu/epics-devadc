@@ -1,0 +1,2 @@
+device(ai,INST_IO,devGpioAi,"devadc")
+registrar( "devAdcConstRegister" )
