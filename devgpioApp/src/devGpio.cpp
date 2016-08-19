@@ -293,7 +293,7 @@ extern "C" {
   }
   static const iocshArg initArg0 = { "board", iocshArgString };
   static const iocshArg * const initArgs[] = { &initArg0 };
-  static const iocshFuncDef initFuncDef = { "GpioConstConfigure", 1, initArgs };
+  static const iocshFuncDef initFuncDef = { "AdcConstConfigure", 1, initArgs };
   static void initCallFunc( const iocshArgBuf *args ) {
     devGpioConstConfigure( args[0].sval );
   }

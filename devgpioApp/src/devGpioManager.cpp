@@ -58,7 +58,7 @@ static const char ERR_END[] = "\033[0m\n";
 //! @brief   Standard Constructor
 //------------------------------------------------------------------------------
 GpioManager::GpioManager() {
-  _gpiobase = "/sys/devices/ocp.2/helper.14/AIN"; // "/sys/class/gpio/gpio";
+  _gpiobase = "/sys/devices/ocp.2/helper.11/AIN"; // "/sys/class/gpio/gpio";
   _mgpio.clear();
 
   _mEdgeToString.insert( std::make_pair( NONE,    "none" ) );
@@ -90,14 +90,35 @@ void GpioManager::exportPin( epicsUInt32 gpio ) {
   static std::string _exportFile = "/sys/devices/bone_capemgr.8/slots";
 
   // Export device tree overlays file for accessing the ADCs:
+  printf("Checking if Device Tree Overlay is exported...\n");  
+	std::stringstream filename;
+  filename << _gpiobase << gpio; //"/value" // Leds have brightness, not value
+	printf("Filename: %s\n", filename.str().c_str());
+	if( access( filename.str().c_str(), F_OK ) != -1 ) {
+  	printf("Device Tree already exported\n");  
+	} else {
+  	printf("Device Tree not exported... exporting now...\n"); 
+		std::fstream exportFs( _exportFile.c_str(), std::fstream::out );
+		exportFs << "cape-bone-iio";
+		exportFs.flush();
+		if( exportFs.bad() ) {
+  		printf("Error while exporting...\n"); 
+		  std::stringstream errmsg;
+		  errmsg << ERR_BEGIN << "GpioManager::exportPin: Could not export pin "
+		         << gpio << ": "
+		         << strerror( errno ) << ERR_END;
+		  throw GpioManagerError( errmsg.str() );
+		}
+		exportFs.close();
+	}
 
+  printf("Device Tree OK\n");
   // Check if Pin was exported by another process
   std::stringstream gpioDir;
   gpioDir << _gpiobase << gpio;
-  printf("Vamos testar?\n");
-  if( access( gpioDir.str().c_str(), F_OK ) == 0 ) {
+  if( access( gpioDir.str().c_str(), F_OK ) == -1 ) {
     GPIO nfo;
-    printf("Entrou no if 1\n");
+    printf("Exporting Pin..\n");
     nfo.exported = true;
     _mgpio.insert( std::make_pair( gpio, nfo ) );
     nfo.logic    = getLogic( gpio );
@@ -107,31 +128,6 @@ void GpioManager::exportPin( epicsUInt32 gpio ) {
     errmsg << ERR_BEGIN << "GpioManager::exportPin: Warning: GPIO " << gpio << " already exported! Might be used by another process!" << ERR_END;
     throw GpioManagerWarning( errmsg.str() );
   }
-
-  std::fstream exportFs( _exportFile.c_str(), std::fstream::out );
-
-  printf("Passou do if 1\n");
-  if( !exportFs.is_open() || !exportFs.good() ) {
-    std::stringstream errmsg;
-    printf("Chegou no if 2\n");
-    errmsg << ERR_BEGIN << "GpioManager::exportPin: Could not open export file: "
-           << strerror( errno ) << ERR_END;
-    throw GpioManagerError( errmsg.str() );
-  }
-
-  printf("Passou do if 2\n");
-  exportFs << "cape-bone-iio";
-  exportFs.flush();
-  if( exportFs.bad() ) {
-    printf("Chegou no if 2\n");
-    std::stringstream errmsg;
-    errmsg << ERR_BEGIN << "GpioManager::exportPin: Could not export pin "
-           << gpio << ": "
-           << strerror( errno ) << ERR_END;
-    throw GpioManagerError( errmsg.str() );
-  }
-  printf("Passou do if 3\n");
-  exportFs.close();
 
   GPIO nfo = { true, ACTIVE_HIGH, UNDIFIEND };
   _mgpio.insert( std::make_pair( gpio, nfo ) );
@@ -219,43 +215,7 @@ void GpioManager::setDirection( epicsUInt32 gpio, DIRECTION dir ) {
 //! @brief   Get Direction of GPIO
 //------------------------------------------------------------------------------
 GpioManager::DIRECTION GpioManager::getDirection( epicsUInt32 gpio ) {
-  std::map< epicsUInt32, GPIO >::iterator it = _mgpio.find( gpio );
-  if( it == _mgpio.end() ){
-    std::stringstream errmsg;
-    errmsg << "GpioManager::getDirection: Error: GPIO " << gpio << " not managed.";
-    throw GpioManagerError( errmsg.str() );
-  } else if ( !it->second.exported ) {
-    std::stringstream errmsg;
-    errmsg << "GpioManager::getDirection: Error: GPIO " << gpio << " not exported.";
-    throw GpioManagerError( errmsg.str() );
-  }
-
-  // Assuming we are the only ones managing this GPIO pin....
-  // if( it->second.dir != UNDIFIEND ) return it->second.dir;
-
-  std::stringstream filename;
-  filename << _gpiobase << gpio << "/direction";
-
-  std::fstream dirFs( filename.str().c_str(), std::fstream::in );
-  if( !dirFs.is_open() || !dirFs.good() ) {
-    std::stringstream errmsg;
-    errmsg << ERR_BEGIN << "GpioManager::getDirection: Could not open direction file '"
-           << filename.str() << "': " << strerror( errno ) << ERR_END;
-    throw GpioManagerError( errmsg.str() );
-  }
-
-  std::string direction;
-  dirFs >> direction;
-  dirFs.close();
-
-  if( direction.compare( "out" ) == 0 ) {
-    it->second.dir = OUTPUT;
-    return OUTPUT;
-  }
-  
-  it->second.dir = INPUT;
   return INPUT;
-
 }
 
 //------------------------------------------------------------------------------
@@ -471,37 +431,6 @@ void GpioManager::setLogic( epicsUInt32 gpio, LOGIC_VALUE logic ) {
 //! @brief   Get Logic of GPIO
 //------------------------------------------------------------------------------
 GpioManager::LOGIC_VALUE GpioManager::getLogic( epicsUInt32 gpio ) {
-  std::map< epicsUInt32, GPIO >::iterator it = _mgpio.find( gpio );
-  if( it == _mgpio.end() ){
-    std::stringstream errmsg;
-    errmsg << "GpioManager::getLogic: Error: GPIO " << gpio << " not managed.";
-    throw GpioManagerError( errmsg.str() );
-  } else if ( !it->second.exported ) {
-    std::stringstream errmsg;
-    errmsg << "GpioManager::getLogic: Error: GPIO " << gpio << " not exported.";
-    throw GpioManagerError( errmsg.str() );
-  }
-
-  std::stringstream filename;
-  filename << _gpiobase << gpio << "/active_low";
-
-  std::fstream logicFs( filename.str().c_str(), std::fstream::in );
-  if( !logicFs.is_open() || !logicFs.good() ) {
-    std::stringstream errmsg;
-    errmsg << ERR_BEGIN << "GpioManager::getLogic: Could not open file '"
-           << filename.str() << "': " << strerror( errno ) << ERR_END;
-    throw GpioManagerError( errmsg.str() );
-  }
-  epicsUInt32 value = 0;
-  logicFs >> value;
-  logicFs.close();
-
-  if( 1 == value ) {
-    it->second.logic = ACTIVE_LOW;
-    return ACTIVE_LOW;
-  }
-
-  it->second.logic = ACTIVE_HIGH;
   return ACTIVE_HIGH;
 }
 
